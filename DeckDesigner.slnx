@@ -1,0 +1,13 @@
+﻿<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DeckDesigner.Domain/DeckDesigner.Domain.csproj" />
+    <Project Path="src/DeckDesigner.Application/DeckDesigner.Application.csproj" />
+    <Project Path="src/DeckDesigner.Infrastructure/DeckDesigner.Infrastructure.csproj" />
+    <Project Path="src/DeckDesigner.Rendering/DeckDesigner.Rendering.csproj" />
+    <Project Path="src/DeckDesigner.Export/DeckDesigner.Export.csproj" />
+    <Project Path="src/DeckDesigner.UI/DeckDesigner.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DeckDesigner.Tests/DeckDesigner.Tests.csproj" />
+  </Folder>
+</Solution>

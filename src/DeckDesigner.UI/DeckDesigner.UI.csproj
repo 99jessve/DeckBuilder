@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DeckDesigner.UI</RootNamespace>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeckDesigner.Domain\DeckDesigner.Domain.csproj" />
+    <ProjectReference Include="..\DeckDesigner.Application\DeckDesigner.Application.csproj" />
+    <ProjectReference Include="..\DeckDesigner.Infrastructure\DeckDesigner.Infrastructure.csproj" />
+    <ProjectReference Include="..\DeckDesigner.Rendering\DeckDesigner.Rendering.csproj" />
+    <ProjectReference Include="..\DeckDesigner.Export\DeckDesigner.Export.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,97 @@
+<Window xmlns="https://github.com/avaloniaui"
+		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+		xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+		xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+		xmlns:controls="clr-namespace:DeckDesigner.UI.Controls"
+		xmlns:vm="clr-namespace:DeckDesigner.UI.ViewModels"
+		mc:Ignorable="d"
+		x:Class="DeckDesigner.UI.Views.MainWindow"
+		x:DataType="vm:MainViewModel"
+		Width="1200" Height="780"
+		MinWidth="900" MinHeight="600"
+		Title="DeckDesigner - Deck Construction Planner">
+
+	<Grid RowDefinitions="Auto,*,Auto">
+
+		<!-- Toolbar -->
+		<Border Grid.Row="0" Background="#252526" Padding="10,6">
+			<StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+				<TextBlock Text="DeckDesigner" FontWeight="Bold" FontSize="15" VerticalAlignment="Center" Foreground="#E0A868" />
+				<Separator />
+				<RadioButton Content="Select" GroupName="Tools" IsChecked="{Binding IsSelectTool, Mode=TwoWay}" />
+				<RadioButton Content="Rectangle" GroupName="Tools" IsChecked="{Binding IsRectangleTool, Mode=TwoWay}" />
+				<RadioButton Content="Triangle" GroupName="Tools" IsChecked="{Binding IsTriangleTool, Mode=TwoWay}" />
+				<Separator />
+				<Button Content="Delete" Click="OnDeleteClick" IsEnabled="{Binding HasSelection}" />
+				<Button Content="Fit View" Click="OnFitClick" />
+				<TextBlock Text="Left-drag: draw/move · Wheel: zoom · Right/Middle-drag: pan · Del: delete"
+						   VerticalAlignment="Center" Opacity="0.7" />
+			</StackPanel>
+		</Border>
+
+		<!-- Main content -->
+		<Grid Grid.Row="1" ColumnDefinitions="*,280">
+
+			<!-- Interactive canvas -->
+			<controls:DeckCanvas x:Name="Canvas" Grid.Column="0" DataContext="{Binding}" />
+
+			<!-- Side panels -->
+			<ScrollViewer Grid.Column="1" Background="#252526">
+				<StackPanel Margin="14" Spacing="18">
+
+					<TextBlock Text="Properties" FontWeight="Bold" FontSize="14" />
+
+					<StackPanel Spacing="6">
+						<TextBlock Text="Board width (mm)" Opacity="0.8" />
+						<NumericUpDown Value="{Binding BoardWidth}" Minimum="20" Maximum="400" Increment="5" />
+
+						<TextBlock Text="Board gap (mm)" Opacity="0.8" />
+						<NumericUpDown Value="{Binding BoardGap}" Minimum="0" Maximum="50" Increment="1" />
+
+						<TextBlock Text="Joist spacing (mm)" Opacity="0.8" />
+						<NumericUpDown Value="{Binding JoistSpacing}" Minimum="50" Maximum="1200" Increment="10" />
+
+						<TextBlock Text="Max board length (mm)" Opacity="0.8" />
+						<NumericUpDown Value="{Binding MaxBoardLength}" Minimum="500" Maximum="6000" Increment="100" />
+
+						<CheckBox Content="Boards run horizontally" IsChecked="{Binding BoardsHorizontal}" Margin="0,4,0,0" />
+					</StackPanel>
+
+					<Separator />
+
+					<TextBlock Text="Material Report" FontWeight="Bold" FontSize="14" />
+					<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+						<TextBlock Grid.Row="0" Grid.Column="0" Text="Shapes" Opacity="0.8" Margin="0,3" />
+						<TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ShapeCountText}" Margin="0,3" />
+
+						<TextBlock Grid.Row="1" Grid.Column="0" Text="Area" Opacity="0.8" Margin="0,3" />
+						<TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AreaText}" Margin="0,3" />
+
+						<TextBlock Grid.Row="2" Grid.Column="0" Text="Boards" Opacity="0.8" Margin="0,3" />
+						<TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding BoardCountText}" Margin="0,3" />
+
+						<TextBlock Grid.Row="3" Grid.Column="0" Text="Board length" Opacity="0.8" Margin="0,3" />
+						<TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding BoardRunningText}" Margin="0,3" />
+
+						<TextBlock Grid.Row="4" Grid.Column="0" Text="Joists" Opacity="0.8" Margin="0,3" />
+						<TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding JoistCountText}" Margin="0,3" />
+
+						<TextBlock Grid.Row="5" Grid.Column="0" Text="Stock boards" Opacity="0.8" Margin="0,3" />
+						<TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding StockBoardText}" Margin="0,3" />
+
+						<TextBlock Grid.Row="6" Grid.Column="0" Text="Waste" Opacity="0.8" Margin="0,3" />
+						<TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding WasteText}" Margin="0,3" />
+
+						<TextBlock Grid.Row="7" Grid.Column="0" Text="Screws" Opacity="0.8" Margin="0,3" />
+						<TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding ScrewText}" Margin="0,3" />
+					</Grid>
+				</StackPanel>
+			</ScrollViewer>
+		</Grid>
+
+		<!-- Status bar -->
+		<Border Grid.Row="2" Background="#007ACC" Padding="10,4">
+			<TextBlock Text="{Binding StatusText}" Foreground="White" />
+		</Border>
+	</Grid>
+</Window>
