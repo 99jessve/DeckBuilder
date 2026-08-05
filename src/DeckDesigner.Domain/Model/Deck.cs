@@ -14,8 +14,10 @@ public sealed class Deck
     private static readonly BeamGenerator BeamGen = new();
     private static readonly PostGenerator PostGen = new();
     private static readonly ButtJointGenerator ButtJointGen = new();
+    private static readonly EdgeBoardGenerator EdgeBoardGen = new();
 
     private IReadOnlyList<Board> _boards = Array.Empty<Board>();
+    private IReadOnlyList<Board> _edgeBoards = Array.Empty<Board>();
     private IReadOnlyList<Joist> _joists = Array.Empty<Joist>();
     private IReadOnlyList<Beam> _beams = Array.Empty<Beam>();
     private IReadOnlyList<Post> _posts = Array.Empty<Post>();
@@ -36,6 +38,9 @@ public sealed class Deck
 
     public IReadOnlyList<Board> Boards => _boards;
 
+    /// <summary>Perimeter cover boards laid across edges that expose plank ends.</summary>
+    public IReadOnlyList<Board> EdgeBoards => _edgeBoards;
+
     public IReadOnlyList<Joist> Joists => _joists;
 
     public IReadOnlyList<Beam> Beams => _beams;
@@ -50,7 +55,15 @@ public sealed class Deck
     /// </summary>
     public void RebuildGeometry()
     {
-        _boards = BoardGen.Generate(Shape, Settings);
+        var field = BoardGen.Generate(Shape, Settings);
+        _edgeBoards = EdgeBoardGen.Generate(Shape, Settings);
+
+        // Boards exposes field boards plus perimeter cover boards for rendering/reporting.
+        var all = new List<Board>(field.Count + _edgeBoards.Count);
+        all.AddRange(field);
+        all.AddRange(_edgeBoards);
+        _boards = all;
+
         _joists = JoistGen.Generate(Shape, Settings);
         _beams = BeamGen.Generate(Shape, Settings);
         _posts = PostGen.Generate(Shape, Settings);

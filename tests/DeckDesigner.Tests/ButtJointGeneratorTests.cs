@@ -37,6 +37,9 @@ public class ButtJointGeneratorTests
 
         Assert.NotEmpty(joints);
 
+        // Joints carry the plank width so they render as a real crossing board.
+        Assert.All(joints, j => Assert.Equal(settings.BoardWidth, j.Width, 3));
+
         // Each joint must sit on a joist line (multiple of the joist spacing).
         foreach (var joint in joints)
         {

@@ -18,8 +18,9 @@ public class GeneratorTests
     public void RebuildGeometry_GeneratesBoards()
     {
         var deck = BuildDeck();
-        Assert.NotEmpty(deck.Boards);
-        Assert.All(deck.Boards, b => Assert.Equal(4000, b.Length, 3));
+        var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
+        Assert.NotEmpty(fieldBoards);
+        Assert.All(fieldBoards, b => Assert.Equal(4000, b.Length, 3));
     }
 
     [Fact]
@@ -27,9 +28,10 @@ public class GeneratorTests
     {
         var settings = new DeckSettings { BoardWidth = 145, BoardGap = 5 };
         var deck = BuildDeck(settings);
+        var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
 
         // Deck height 3000, pitch 150, first row at 72.5 => ~20 rows.
-        Assert.Equal(20, deck.Boards.Count);
+        Assert.Equal(20, fieldBoards.Count);
     }
 
     [Fact]
@@ -40,7 +42,8 @@ public class GeneratorTests
         var deck = new Deck(shape, settings);
         deck.RebuildGeometry();
 
-        Assert.All(deck.Boards, b => Assert.True(b.NeedsJoint));
+        var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
+        Assert.All(fieldBoards, b => Assert.True(b.NeedsJoint));
     }
 
     [Fact]

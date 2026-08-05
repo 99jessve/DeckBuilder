@@ -139,6 +139,18 @@ public sealed class DeckCanvas : Control
 
     private Point2D ToGridWorld(Point p) => SnapToGrid(ToWorld(p));
 
+    // Constrains a point so the segment reference->point is axis-aligned (snaps to the
+    // dominant axis). Used while drawing triangles with Ctrl held so the legs stay
+    // straight along the grid.
+    private static Point2D ConstrainToAxis(Point2D reference, Point2D point)
+    {
+        var dx = Math.Abs(point.X - reference.X);
+        var dy = Math.Abs(point.Y - reference.Y);
+        return dx >= dy
+            ? new Point2D(point.X, reference.Y)
+            : new Point2D(reference.X, point.Y);
+    }
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
@@ -191,6 +203,13 @@ public sealed class DeckCanvas : Control
         // Triangle tool: three clicks define a right-angled triangle.
         if (_viewModel.CurrentTool == DrawTool.Triangle)
         {
+            // Hold Ctrl to keep the leg straight along the grid relative to the first click.
+            var ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            if (ctrl && _triangleClicks.Count >= 1)
+            {
+                gridWorld = SnapToGrid(ConstrainToAxis(_triangleClicks[0], gridWorld));
+            }
+
             _triangleClicks.Add(gridWorld);
             _hoverWorld = gridWorld;
 
@@ -201,7 +220,7 @@ public sealed class DeckCanvas : Control
             else
             {
                 _viewModel.StatusText = _triangleClicks.Count == 1
-                    ? "Triangle: click the second point (the right-angle corner)."
+                    ? "Triangle: click the second point (the right-angle corner). Hold Ctrl for straight lines."
                     : "Triangle: click the third point to finish.";
             }
 
@@ -254,6 +273,12 @@ public sealed class DeckCanvas : Control
         {
             // Live preview of the in-progress triangle following the cursor.
             _hoverWorld = ToGridWorld(screen);
+
+            // Hold Ctrl to keep the second leg straight along the grid.
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && _triangleClicks.Count == 1)
+            {
+                _hoverWorld = SnapToGrid(ConstrainToAxis(_triangleClicks[0], _hoverWorld));
+            }
 
             if (_triangleClicks.Count == 1)
             {

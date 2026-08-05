@@ -32,6 +32,7 @@ public sealed class CsvMaterialReportExporter : IMaterialReportExporter
 
     public async Task ExportAsync(MaterialReport report, string path, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(report);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var csv = BuildCsv(report);
         await File.WriteAllTextAsync(path, csv, cancellationToken).ConfigureAwait(false);
