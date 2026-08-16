@@ -9,6 +9,7 @@ using DeckDesigner.Domain.Model;
 public sealed class BoardRenderer : IRenderer<Board>
 {
     private const string BoardColor = "#8B5A2B";
+    private const string OutlineColor = "#000000";
 
     public void Render(IReadOnlyList<Board> items, Camera camera, IRenderContext context)
     {
@@ -20,7 +21,13 @@ public sealed class BoardRenderer : IRenderer<Board>
         {
             var start = camera.WorldToScreen(board.Start);
             var end = camera.WorldToScreen(board.End);
-            context.DrawLine(start.X, start.Y, end.X, end.Y, BoardColor, Math.Max(1, board.Width * camera.Zoom));
+            var thickness = Math.Max(1, board.Width * camera.Zoom);
+            
+            // Draw outline first (slightly thicker)
+            context.DrawLine(start.X, start.Y, end.X, end.Y, OutlineColor, thickness + 2);
+            
+            // Draw the actual board
+            context.DrawLine(start.X, start.Y, end.X, end.Y, BoardColor, thickness);
         }
     }
 }

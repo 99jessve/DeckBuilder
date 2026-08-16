@@ -9,6 +9,7 @@ using DeckDesigner.Domain.Model;
 public sealed class ButtJointRenderer : IRenderer<ButtJoint>
 {
     private const string BoardColor = "#8B5A2B";
+    private const string OutlineColor = "#000000";
 
     public void Render(IReadOnlyList<ButtJoint> items, Camera camera, IRenderContext context)
     {
@@ -20,7 +21,13 @@ public sealed class ButtJointRenderer : IRenderer<ButtJoint>
         {
             var start = camera.WorldToScreen(joint.Start);
             var end = camera.WorldToScreen(joint.End);
-            context.DrawLine(start.X, start.Y, end.X, end.Y, BoardColor, Math.Max(1, joint.Width * camera.Zoom));
+            var thickness = Math.Max(1, joint.Width * camera.Zoom);
+            
+            // Draw outline first (slightly thicker)
+            context.DrawLine(start.X, start.Y, end.X, end.Y, OutlineColor, thickness + 2);
+            
+            // Draw the actual joint
+            context.DrawLine(start.X, start.Y, end.X, end.Y, BoardColor, thickness);
         }
     }
 }

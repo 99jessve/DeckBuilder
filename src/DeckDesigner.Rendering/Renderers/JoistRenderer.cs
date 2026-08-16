@@ -8,6 +8,7 @@ using DeckDesigner.Domain.Model;
 public sealed class JoistRenderer : IRenderer<Joist>
 {
     private const string JoistColor = "#555555";
+    private const string OutlineColor = "#000000";
 
     public void Render(IReadOnlyList<Joist> items, Camera camera, IRenderContext context)
     {
@@ -19,7 +20,13 @@ public sealed class JoistRenderer : IRenderer<Joist>
         {
             var start = camera.WorldToScreen(joist.Start);
             var end = camera.WorldToScreen(joist.End);
-            context.DrawLine(start.X, start.Y, end.X, end.Y, JoistColor, Math.Max(1, joist.Width * camera.Zoom));
+            var thickness = Math.Max(1, joist.Width * camera.Zoom);
+            
+            // Draw outline first (slightly thicker)
+            context.DrawLine(start.X, start.Y, end.X, end.Y, OutlineColor, thickness + 2);
+            
+            // Draw the actual joist
+            context.DrawLine(start.X, start.Y, end.X, end.Y, JoistColor, thickness);
         }
     }
 }
