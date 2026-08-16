@@ -185,6 +185,13 @@ public sealed class EdgeBoardGenerator
         }
 
         var hit = GeometryHelpers.Intersect(centerLine, neighborLine);
+        
+        // Apply proper mitre cut logic to ensure planks don't extend through the corner
+        if (hit.HasValue)
+        {
+            return CreateProperMitreCut(hit.Value, corner, centerLine.Direction, half);
+        }
+        
         return hit ?? corner;
     }
 
@@ -199,5 +206,29 @@ public sealed class EdgeBoardGenerator
         }
 
         return new Point2D(sx / points.Count, sy / points.Count);
+    }
+
+    /// <summary>
+    /// Creates a proper mitre cut that prevents planks from going through the mitre ends.
+    /// </summary>
+    private static Point2D CreateProperMitreCut(Point2D intersection, Point2D corner, Vector2D direction, double half)
+    {
+        // The key approach: create a proper cut perpendicular to board direction
+        // This ensures planks don't go through the mitre end at the corner
+        
+        // Create perpendicular vector to board direction (for the cut)
+        var cutDirection = new Vector2D(-direction.Y, direction.X);
+        
+        // Normalize it
+        var cutMagnitude = Math.Sqrt((cutDirection.X * cutDirection.X) + (cutDirection.Y * cutDirection.Y));
+        if (cutMagnitude > 1e-6)
+        {
+            cutDirection = new Vector2D(cutDirection.X / cutMagnitude, cutDirection.Y / cutMagnitude);
+        }
+        
+        // Apply the offset to create a proper mitre cut
+        return new Point2D(
+            intersection.X + (cutDirection.X * half),
+            intersection.Y + (cutDirection.Y * half));
     }
 }
