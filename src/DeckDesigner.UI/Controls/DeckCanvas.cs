@@ -589,7 +589,7 @@ public sealed class DeckCanvas : Control
 
         var fill = new SolidColorBrush(Color.Parse("#2A2118"));
         var strokeColor = selected ? "#4EC9B0" : "#E0A868";
-        var pen = new Pen(new SolidColorBrush(Color.Parse(strokeColor)), selected ? 3 : 2);
+        var pen = new Pen(new SolidColorBrush(Color.Parse(strokeColor)), selected ? 3 : 2) { LineJoin = PenLineJoin.Round };
         context.DrawGeometry(fill, pen, geometry);
     }
 
@@ -609,7 +609,7 @@ public sealed class DeckCanvas : Control
 
     private void DrawTrianglePreview(DrawingContext context)
     {
-        var pen = new Pen(new SolidColorBrush(Color.Parse("#4EC9B0")), 1.5, DashStyle.Dash);
+        var pen = new Pen(new SolidColorBrush(Color.Parse("#4EC9B0")), 1.5, DashStyle.Dash) { LineJoin = PenLineJoin.Round };
         var fill = new SolidColorBrush(Color.Parse("#204EC9B0"));
         var dotBrush = new SolidColorBrush(Color.Parse("#4EC9B0"));
 
