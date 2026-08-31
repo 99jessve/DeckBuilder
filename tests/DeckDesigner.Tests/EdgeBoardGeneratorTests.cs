@@ -49,4 +49,62 @@ public class EdgeBoardGeneratorTests
         Assert.NotEmpty(deck.EdgeBoards);
         Assert.All(deck.EdgeBoards, e => Assert.Contains(e, deck.Boards));
     }
+
+    [Fact]
+    public void ConcaveLShape_StillGeneratesFieldBoards()
+    {
+        // An L-shaped (concave) outline, like two snapped rectangles merged into one
+        // deck. Its centroid falls outside the shape, which used to flip the inward
+        // normals and clip away every field board.
+        var lShape = new PolygonShape(new List<Point2D>
+        {
+            new(0, 0),
+            new(4000, 0),
+            new(4000, 1500),
+            new(2000, 1500),
+            new(2000, 3000),
+            new(0, 3000),
+        });
+
+        var deck = new Deck(lShape, new DeckSettings());
+        deck.RebuildGeometry();
+
+        var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
+        Assert.NotEmpty(fieldBoards);
+
+        // The wide lower arm (full 4000 width) must still be filled: a reflex edge used to
+        // slice across the interior and clip the wide boards down to a small convex core.
+        Assert.Contains(fieldBoards, b => b.Length > 3000);
+    }
+
+    [Fact]
+    public void ConcaveShape_DoesNotProduceFullLengthSlivers()
+    {
+        // A concave outline with a diagonal edge (like a rectangle merged with a triangle).
+        // Intersecting every edge's infinite half-plane used to slice interior boards down
+        // to hairline slivers that still spanned the full deck width. Clipping against the
+        // real interior polygon must instead keep full-width planks.
+        var shape = new PolygonShape(new List<Point2D>
+        {
+            new(0, 0),
+            new(4000, 0),
+            new(4000, 1200),
+            new(6000, 1600),
+            new(6000, 3600),
+            new(2600, 3600),
+            new(2600, 2000),
+            new(0, 2000),
+        });
+
+        var deck = new Deck(shape, new DeckSettings());
+        deck.RebuildGeometry();
+
+        var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
+        Assert.NotEmpty(fieldBoards);
+
+        // The bug produced hairline planks that still spanned the full deck width
+        // (~5700mm). Clipping against the real interior polygon keeps such wide rows at
+        // full board width instead of collapsing them.
+        Assert.DoesNotContain(fieldBoards, b => b.Length > 4000 && b.Width < 100);
+    }
 }

@@ -16,9 +16,16 @@ public sealed class EdgeBoardGenerator
 {
     /// <summary>
     /// A perimeter cover board together with the inner edge line that field boards
-    /// must be trimmed against so they don't overhang the cover board.
+    /// must be trimmed against so they don't overhang the cover board. <see cref="EdgeStart"/>
+    /// and <see cref="EdgeEnd"/> are the outline edge endpoints, used to limit the trim to
+    /// boards that actually lie along this edge (important for concave, merged decks).
     /// </summary>
-    public readonly record struct CoveredEdge(Board Board, GeometryHelpers.Line InnerLine, Point2D Inside);
+    public readonly record struct CoveredEdge(
+        Board Board,
+        GeometryHelpers.Line InnerLine,
+        Point2D Inside,
+        Point2D EdgeStart,
+        Point2D EdgeEnd);
 
     public IReadOnlyList<Board> Generate(IShape shape, DeckSettings settings)
         => GenerateEdges(shape, settings).Select(e => e.Board).ToList();
@@ -34,7 +41,10 @@ public sealed class EdgeBoardGenerator
             return Array.Empty<CoveredEdge>();
         }
 
-        var centroid = Centroid(points);
+        // Orientation of the (possibly concave) outline: +1 if the vertices wind one way,
+        // -1 the other. The inward normal is derived from this, which is reliable even
+        // when the centroid falls outside a merged, L-shaped deck.
+        var orient = SignedArea(points) >= 0 ? 1.0 : -1.0;
         var half = settings.BoardWidth / 2.0;
         var count = points.Count;
 
@@ -62,16 +72,10 @@ public sealed class EdgeBoardGenerator
             // Every edge gets a cover board so the deck has a full picture-frame border
             // with mitred corners on all sides, regardless of board run direction.
 
-            // Inward normal: perpendicular to the edge, pointing toward the centroid.
-            var nx = -uy;
-            var ny = ux;
-            var midX = (a.X + b.X) / 2.0;
-            var midY = (a.Y + b.Y) / 2.0;
-            if (((centroid.X - midX) * nx) + ((centroid.Y - midY) * ny) < 0)
-            {
-                nx = -nx;
-                ny = -ny;
-            }
+            // Inward normal from polygon winding (reliable even for concave, merged
+            // outlines where the centroid can fall outside the shape).
+            var nx = -uy * orient;
+            var ny = ux * orient;
 
             covered[i] = true;
 
@@ -99,15 +103,10 @@ public sealed class EdgeBoardGenerator
             var ux = ex / edgeLength;
             var uy = ey / edgeLength;
 
-            var nx = -uy;
-            var ny = ux;
+            var nx = -uy * orient;
+            var ny = ux * orient;
             var midX = (a.X + b.X) / 2.0;
             var midY = (a.Y + b.Y) / 2.0;
-            if (((centroid.X - midX) * nx) + ((centroid.Y - midY) * ny) < 0)
-            {
-                nx = -nx;
-                ny = -ny;
-            }
 
             // Cover board center-line: outline edge offset inward by half a board width.
             var centerLine = new GeometryHelpers.Line(
@@ -127,10 +126,16 @@ public sealed class EdgeBoardGenerator
 
             var corners = new[] { startOuter, endOuter, endInner, startInner };
 
+            // Reference point strictly on the interior side of the inner line so field
+            // board clipping keeps the interior (not the border) side regardless of shape.
+            var inside = new Point2D(innerLines[i].Point.X + nx, innerLines[i].Point.Y + ny);
+
             edges.Add(new CoveredEdge(
                 new Board(start, end, settings.BoardWidth, NeedsJoint: false, corners),
                 innerLines[i],
-                centroid));
+                inside,
+                a,
+                b));
         }
 
         return edges;
@@ -175,16 +180,16 @@ public sealed class EdgeBoardGenerator
         return (outer, inner);
     }
 
-    private static Point2D Centroid(IReadOnlyList<Point2D> points)
+    private static double SignedArea(IReadOnlyList<Point2D> points)
     {
-        double sx = 0;
-        double sy = 0;
-        foreach (var p in points)
+        double sum = 0;
+        for (var i = 0; i < points.Count; i++)
         {
-            sx += p.X;
-            sy += p.Y;
+            var a = points[i];
+            var b = points[(i + 1) % points.Count];
+            sum += (a.X * b.Y) - (b.X * a.Y);
         }
 
-        return new Point2D(sx / points.Count, sy / points.Count);
+        return sum / 2.0;
     }
 }
