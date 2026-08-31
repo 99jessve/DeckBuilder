@@ -34,12 +34,6 @@ public sealed class EdgeBoardGenerator
             return Array.Empty<CoveredEdge>();
         }
 
-        var horizontal = settings.BoardDirection == BoardDirection.Horizontal;
-
-        // Unit run direction of the field boards.
-        var runX = horizontal ? 1.0 : 0.0;
-        var runY = horizontal ? 0.0 : 1.0;
-
         var centroid = Centroid(points);
         var half = settings.BoardWidth / 2.0;
         var count = points.Count;
@@ -65,13 +59,8 @@ public sealed class EdgeBoardGenerator
             var ux = ex / edgeLength;
             var uy = ey / edgeLength;
 
-            // If the edge is (nearly) parallel to the board run direction, it shows the
-            // clean side of a plank and needs no cover board.
-            var parallelism = Math.Abs((ux * runX) + (uy * runY));
-            if (parallelism > 0.999)
-            {
-                continue;
-            }
+            // Every edge gets a cover board so the deck has a full picture-frame border
+            // with mitred corners on all sides, regardless of board run direction.
 
             // Inward normal: perpendicular to the edge, pointing toward the centroid.
             var nx = -uy;
@@ -125,11 +114,21 @@ public sealed class EdgeBoardGenerator
                 new Point2D(midX + (nx * half), midY + (ny * half)),
                 new Vector2D(ux, uy));
 
-            var start = MiterEnd(a, centerLine, points, i, prev: true, covered, centroid, half);
-            var end = MiterEnd(b, centerLine, points, i, prev: false, covered, centroid, half);
+            // The board's two long edges: the outline edge (outer) and the inner line.
+            var outerEdge = new GeometryHelpers.Line(a, new Vector2D(ux, uy));
+            var innerEdge = innerLines[i];
+
+            var (startOuter, startInner) = MiterCorners(a, outerEdge, innerEdge, points, i, prev: true, covered, innerLines);
+            var (endOuter, endInner) = MiterCorners(b, outerEdge, innerEdge, points, i, prev: false, covered, innerLines);
+
+            // Spine endpoints (mid of each cut) keep Length and joint math meaningful.
+            var start = Midpoint(startOuter, startInner);
+            var end = Midpoint(endOuter, endInner);
+
+            var corners = new[] { startOuter, endOuter, endInner, startInner };
 
             edges.Add(new CoveredEdge(
-                new Board(start, end, settings.BoardWidth, NeedsJoint: false),
+                new Board(start, end, settings.BoardWidth, NeedsJoint: false, corners),
                 innerLines[i],
                 centroid));
         }
@@ -137,15 +136,22 @@ public sealed class EdgeBoardGenerator
         return edges;
     }
 
-    private static Point2D MiterEnd(
+    private static Point2D Midpoint(Point2D p, Point2D q)
+        => new((p.X + q.X) / 2.0, (p.Y + q.Y) / 2.0);
+
+    // Computes the outer and inner corner points where this board's long edges are cut
+    // against the neighbor edge. If the neighbor also carries a cover board, the cut is a
+    // true mitre (outer meets neighbor's outer, inner meets neighbor's inner); otherwise
+    // the board is cut flush along the neighbor's outline edge.
+    private static (Point2D Outer, Point2D Inner) MiterCorners(
         Point2D corner,
-        GeometryHelpers.Line centerLine,
+        GeometryHelpers.Line outerEdge,
+        GeometryHelpers.Line innerEdge,
         IReadOnlyList<Point2D> points,
         int edgeIndex,
         bool prev,
         bool[] covered,
-        Point2D centroid,
-        double half)
+        GeometryHelpers.Line[] innerLines)
     {
         var count = points.Count;
         var neighborIndex = prev ? (edgeIndex - 1 + count) % count : (edgeIndex + 1) % count;
@@ -157,42 +163,16 @@ public sealed class EdgeBoardGenerator
         var nlen = Math.Sqrt((ndx * ndx) + (ndy * ndy));
         if (nlen < 1e-6)
         {
-            return corner;
+            return (corner, corner);
         }
 
         var ndir = new Vector2D(ndx / nlen, ndy / nlen);
+        var neighborOuter = new GeometryHelpers.Line(na, ndir);
+        var neighborInner = covered[neighborIndex] ? innerLines[neighborIndex] : neighborOuter;
 
-        // Miter against the neighbor: if it also carries a cover board, meet at the
-        // neighbor's center-line (offset inward by half); otherwise meet the outline edge.
-        GeometryHelpers.Line neighborLine;
-        if (covered[neighborIndex])
-        {
-            var noff = new Vector2D(-ndir.Y, ndir.X);
-            var nmidX = (na.X + nb.X) / 2.0;
-            var nmidY = (na.Y + nb.Y) / 2.0;
-            if (((centroid.X - nmidX) * noff.X) + ((centroid.Y - nmidY) * noff.Y) < 0)
-            {
-                noff = -noff;
-            }
-
-            neighborLine = new GeometryHelpers.Line(
-                new Point2D(nmidX + (noff.X * half), nmidY + (noff.Y * half)),
-                ndir);
-        }
-        else
-        {
-            neighborLine = new GeometryHelpers.Line(na, ndir);
-        }
-
-        var hit = GeometryHelpers.Intersect(centerLine, neighborLine);
-        
-        // Apply proper mitre cut logic to ensure planks don't extend through the corner
-        if (hit.HasValue)
-        {
-            return CreateProperMitreCut(hit.Value, corner, centerLine.Direction, half);
-        }
-        
-        return hit ?? corner;
+        var outer = GeometryHelpers.Intersect(outerEdge, neighborOuter) ?? corner;
+        var inner = GeometryHelpers.Intersect(innerEdge, neighborInner) ?? corner;
+        return (outer, inner);
     }
 
     private static Point2D Centroid(IReadOnlyList<Point2D> points)
@@ -206,29 +186,5 @@ public sealed class EdgeBoardGenerator
         }
 
         return new Point2D(sx / points.Count, sy / points.Count);
-    }
-
-    /// <summary>
-    /// Creates a proper mitre cut that prevents planks from going through the mitre ends.
-    /// </summary>
-    private static Point2D CreateProperMitreCut(Point2D intersection, Point2D corner, Vector2D direction, double half)
-    {
-        // The key approach: create a proper cut perpendicular to board direction
-        // This ensures planks don't go through the mitre end at the corner
-        
-        // Create perpendicular vector to board direction (for the cut)
-        var cutDirection = new Vector2D(-direction.Y, direction.X);
-        
-        // Normalize it
-        var cutMagnitude = Math.Sqrt((cutDirection.X * cutDirection.X) + (cutDirection.Y * cutDirection.Y));
-        if (cutMagnitude > 1e-6)
-        {
-            cutDirection = new Vector2D(cutDirection.X / cutMagnitude, cutDirection.Y / cutMagnitude);
-        }
-        
-        // Apply the offset to create a proper mitre cut
-        return new Point2D(
-            intersection.X + (cutDirection.X * half),
-            intersection.Y + (cutDirection.Y * half));
     }
 }

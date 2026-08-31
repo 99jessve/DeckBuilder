@@ -1,8 +1,8 @@
 namespace DeckDesigner.Domain.Model;
 
 using DeckDesigner.Domain.Generation;
+using DeckDesigner.Domain.Geometry;
 using DeckDesigner.Domain.Shapes;
-
 /// <summary>
 /// The central aggregate. Owns all generated construction geometry.
 /// Geometry is produced exclusively through <see cref="RebuildGeometry"/>.
@@ -56,11 +56,51 @@ public sealed class Deck
     public void RebuildGeometry()
     {
         var field = BoardGen.Generate(Shape, Settings);
-        _edgeBoards = EdgeBoardGen.Generate(Shape, Settings);
+        var coveredEdges = EdgeBoardGen.GenerateEdges(Shape, Settings);
+        _edgeBoards = coveredEdges.Select(e => e.Board).ToList();
+
+        // Trim field boards back to each cover board's inner line so their square ends
+        // don't poke past the (possibly angled) cover boards along the perimeter. The
+        // full board rectangle is clipped so angled edges get a matching angled end.
+        var trimmed = new List<Board>(field.Count);
+        foreach (var board in field)
+        {
+            // Build the board rectangle from its centerline and half width.
+            var dir = new Vector2D(board.End.X - board.Start.X, board.End.Y - board.Start.Y).Normalized();
+            var n = dir.Perpendicular();
+            var h = board.Width / 2.0;
+            var rect = new List<Point2D>
+            {
+                new(board.Start.X + (n.X * h), board.Start.Y + (n.Y * h)),
+                new(board.End.X + (n.X * h), board.End.Y + (n.Y * h)),
+                new(board.End.X - (n.X * h), board.End.Y - (n.Y * h)),
+                new(board.Start.X - (n.X * h), board.Start.Y - (n.Y * h)),
+            };
+
+            var start = board.Start;
+            var end = board.End;
+            var dropped = false;
+
+            foreach (var edge in coveredEdges)
+            {
+                rect = GeometryHelpers.ClipPolygonToHalfPlane(rect, edge.InnerLine, edge.Inside);
+                if (rect.Count < 3 ||
+                    !GeometryHelpers.ClipSegmentToHalfPlane(edge.InnerLine, edge.Inside, ref start, ref end))
+                {
+                    dropped = true;
+                    break;
+                }
+            }
+
+            if (!dropped && start.DistanceTo(end) > 1e-6)
+            {
+                trimmed.Add(board with { Start = start, End = end, Corners = rect });
+            }
+        }
 
         // Boards exposes field boards plus perimeter cover boards for rendering/reporting.
-        var all = new List<Board>(field.Count + _edgeBoards.Count);
-        all.AddRange(field);
+        var all = new List<Board>(trimmed.Count + _edgeBoards.Count);
+        all.AddRange(trimmed);
         all.AddRange(_edgeBoards);
         _boards = all;
 

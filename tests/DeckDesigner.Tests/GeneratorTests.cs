@@ -20,7 +20,9 @@ public class GeneratorTests
         var deck = BuildDeck();
         var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
         Assert.NotEmpty(fieldBoards);
-        Assert.All(fieldBoards, b => Assert.Equal(4000, b.Length, 3));
+        // Field boards are trimmed to butt against the two vertical cover boards
+        // (one board width, 145mm, in from each side): 4000 - 2*145 = 3710.
+        Assert.All(fieldBoards, b => Assert.Equal(3710, b.Length, 3));
     }
 
     [Fact]
@@ -30,8 +32,9 @@ public class GeneratorTests
         var deck = BuildDeck(settings);
         var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
 
-        // Deck height 3000, pitch 150, first row at 72.5 => ~20 rows.
-        Assert.Equal(20, fieldBoards.Count);
+        // Deck height 3000, pitch 150 => ~20 rows. The top and bottom picture-frame
+        // cover boards trim away the first and last rows, leaving 18.
+        Assert.Equal(18, fieldBoards.Count);
     }
 
     [Fact]

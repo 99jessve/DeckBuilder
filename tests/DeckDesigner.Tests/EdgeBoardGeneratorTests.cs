@@ -8,7 +8,7 @@ using DeckDesigner.Domain.Shapes;
 public class EdgeBoardGeneratorTests
 {
     [Fact]
-    public void Rectangle_HorizontalBoards_CoversTwoVerticalEdges()
+    public void Rectangle_HorizontalBoards_CoversAllFourEdges()
     {
         var gen = new EdgeBoardGenerator();
         var settings = new DeckSettings { BoardDirection = BoardDirection.Horizontal };
@@ -16,9 +16,8 @@ public class EdgeBoardGeneratorTests
 
         var edges = gen.Generate(shape, settings);
 
-        // The two vertical edges expose plank ends and need a cover board; the two
-        // horizontal edges run parallel to the boards and do not.
-        Assert.Equal(2, edges.Count);
+        // A full picture-frame border puts a mitred cover board on every edge.
+        Assert.Equal(4, edges.Count);
     }
 
     [Fact]
@@ -35,9 +34,9 @@ public class EdgeBoardGeneratorTests
 
         var edges = gen.Generate(shape, settings);
 
-        // The horizontal leg is parallel to the boards (no cover). The vertical leg and
-        // the hypotenuse both expose ends and get a cover board.
-        Assert.Equal(2, edges.Count);
+        // A full picture-frame border puts a mitred cover board on every edge,
+        // including the hypotenuse.
+        Assert.Equal(3, edges.Count);
     }
 
     [Fact]

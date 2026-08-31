@@ -97,4 +97,55 @@ public static class GeometryHelpers
 
         return true;
     }
+
+    /// <summary>
+    /// Clips a convex polygon to the half-plane on the inward side of <paramref name="line"/>
+    /// (the side <paramref name="inside"/> is on) using Sutherland-Hodgman. Returns the clipped
+    /// polygon vertices, or an empty list if nothing remains.
+    /// </summary>
+    public static List<Point2D> ClipPolygonToHalfPlane(
+        IReadOnlyList<Point2D> polygon,
+        Line line,
+        Point2D inside)
+    {
+        var result = new List<Point2D>(polygon.Count + 1);
+        if (polygon.Count == 0)
+        {
+            return result;
+        }
+
+        var insideSign = Math.Sign(SignedDistance(line, inside));
+        if (insideSign == 0)
+        {
+            insideSign = 1;
+        }
+
+        for (var i = 0; i < polygon.Count; i++)
+        {
+            var current = polygon[i];
+            var next = polygon[(i + 1) % polygon.Count];
+
+            var dc = SignedDistance(line, current) * insideSign;
+            var dn = SignedDistance(line, next) * insideSign;
+
+            var currentInside = dc >= -1e-9;
+            var nextInside = dn >= -1e-9;
+
+            if (currentInside)
+            {
+                result.Add(current);
+            }
+
+            // Edge crosses the clip line: add the intersection point.
+            if (currentInside != nextInside)
+            {
+                var t = dc / (dc - dn);
+                result.Add(new Point2D(
+                    current.X + (t * (next.X - current.X)),
+                    current.Y + (t * (next.Y - current.Y))));
+            }
+        }
+
+        return result;
+    }
 }
