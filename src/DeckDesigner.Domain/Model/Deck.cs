@@ -61,7 +61,9 @@ public sealed class Deck
 
         // Trim field boards back to each cover board's inner line so their square ends
         // don't poke past the (possibly angled) cover boards along the perimeter. The
-        // full board rectangle is clipped so angled edges get a matching angled end.
+        // full board rectangle is clipped so angled edges get a matching angled end, and
+        // a partial row near a border survives as a narrower "cut" plank rather than
+        // being dropped.
         var trimmed = new List<Board>(field.Count);
         foreach (var board in field)
         {
@@ -77,25 +79,47 @@ public sealed class Deck
                 new(board.Start.X - (n.X * h), board.Start.Y - (n.Y * h)),
             };
 
-            var start = board.Start;
-            var end = board.End;
-            var dropped = false;
-
             foreach (var edge in coveredEdges)
             {
                 rect = GeometryHelpers.ClipPolygonToHalfPlane(rect, edge.InnerLine, edge.Inside);
-                if (rect.Count < 3 ||
-                    !GeometryHelpers.ClipSegmentToHalfPlane(edge.InnerLine, edge.Inside, ref start, ref end))
+                if (rect.Count < 3)
                 {
-                    dropped = true;
                     break;
                 }
             }
 
-            if (!dropped && start.DistanceTo(end) > 1e-6)
+            if (rect.Count < 3)
             {
-                trimmed.Add(board with { Start = start, End = end, Corners = rect });
+                continue;
             }
+
+            // Derive the plank's spine and (possibly reduced) width from the clipped
+            // polygon, projecting its vertices onto the board's own axes.
+            var minT = double.MaxValue;
+            var maxT = double.MinValue;
+            var minS = double.MaxValue;
+            var maxS = double.MinValue;
+            foreach (var p in rect)
+            {
+                var t = (p.X * dir.X) + (p.Y * dir.Y);
+                var s = (p.X * n.X) + (p.Y * n.Y);
+                minT = Math.Min(minT, t);
+                maxT = Math.Max(maxT, t);
+                minS = Math.Min(minS, s);
+                maxS = Math.Max(maxS, s);
+            }
+
+            var width = maxS - minS;
+            var sMid = (minS + maxS) / 2.0;
+            if (maxT - minT <= 1e-6 || width <= 1e-6)
+            {
+                continue;
+            }
+
+            var start = new Point2D((dir.X * minT) + (n.X * sMid), (dir.Y * minT) + (n.Y * sMid));
+            var end = new Point2D((dir.X * maxT) + (n.X * sMid), (dir.Y * maxT) + (n.Y * sMid));
+
+            trimmed.Add(board with { Start = start, End = end, Width = width, Corners = rect });
         }
 
         // Boards exposes field boards plus perimeter cover boards for rendering/reporting.

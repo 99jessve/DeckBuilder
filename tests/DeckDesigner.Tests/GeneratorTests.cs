@@ -32,9 +32,10 @@ public class GeneratorTests
         var deck = BuildDeck(settings);
         var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
 
-        // Deck height 3000, pitch 150 => ~20 rows. The top and bottom picture-frame
-        // cover boards trim away the first and last rows, leaving 18.
-        Assert.Equal(18, fieldBoards.Count);
+        // Deck height 3000, pitch 150 => 18 full rows fit between the top and bottom
+        // picture-frame borders, plus one narrower "cut" plank filling the leftover
+        // strip against the bottom border => 19.
+        Assert.Equal(19, fieldBoards.Count);
     }
 
     [Fact]
