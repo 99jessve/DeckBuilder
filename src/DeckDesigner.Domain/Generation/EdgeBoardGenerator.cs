@@ -177,7 +177,46 @@ public sealed class EdgeBoardGenerator
 
         var outer = GeometryHelpers.Intersect(outerEdge, neighborOuter) ?? corner;
         var inner = GeometryHelpers.Intersect(innerEdge, neighborInner) ?? corner;
+
+        // Miter limit: at a very acute junction (e.g. the thin neck where two snapped
+        // shapes barely touch) the offset lines intersect far from the actual vertex,
+        // producing a spike that pokes outside the outline. When the miter runs longer
+        // than a few board widths, fall back to a flush cut so the border stays inside the
+        // shape instead of shooting out into a spike.
+        var maxMiter = MiterLimitFactor * BoardWidthOf(outerEdge, innerEdge);
+        if (Distance(outer, corner) > maxMiter)
+        {
+            outer = corner;
+        }
+
+        if (Distance(inner, corner) > maxMiter)
+        {
+            // Flush inner cut: foot of the perpendicular from the vertex onto the inner line.
+            inner = ClosestPointOnLine(innerEdge, corner);
+        }
+
         return (outer, inner);
+    }
+
+    private const double MiterLimitFactor = 3.0;
+
+    private static double Distance(Point2D a, Point2D b)
+    {
+        var dx = a.X - b.X;
+        var dy = a.Y - b.Y;
+        return Math.Sqrt((dx * dx) + (dy * dy));
+    }
+
+    // The board width equals the perpendicular distance between a board's outer and inner
+    // long edges.
+    private static double BoardWidthOf(GeometryHelpers.Line outerEdge, GeometryHelpers.Line innerEdge)
+        => Math.Abs(GeometryHelpers.SignedDistance(outerEdge, innerEdge.Point));
+
+    private static Point2D ClosestPointOnLine(GeometryHelpers.Line line, Point2D p)
+    {
+        var d = line.Direction;
+        var t = ((p.X - line.Point.X) * d.X) + ((p.Y - line.Point.Y) * d.Y);
+        return new Point2D(line.Point.X + (t * d.X), line.Point.Y + (t * d.Y));
     }
 
     private static double SignedArea(IReadOnlyList<Point2D> points)

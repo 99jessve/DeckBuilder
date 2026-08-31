@@ -107,4 +107,37 @@ public class EdgeBoardGeneratorTests
         // full board width instead of collapsing them.
         Assert.DoesNotContain(fieldBoards, b => b.Length > 4000 && b.Width < 100);
     }
+
+    [Fact]
+    public void AcuteJunction_EdgeBoardsStayWithinShapeBounds()
+    {
+        var gen = new EdgeBoardGenerator();
+        var settings = new DeckSettings();
+
+        // A shape with a very acute corner (thin neck), like the pinch where two snapped
+        // shapes barely touch. An unbounded miter used to shoot a spike far outside the
+        // outline at such junctions.
+        var shape = new PolygonShape(new List<Point2D>
+        {
+            new(0, 0),
+            new(4000, 0),
+            new(4000, 2000),
+            new(200, 2000),
+            new(0, 1900),
+        });
+
+        var edges = gen.GenerateEdges(shape, settings);
+
+        // Bounds with a generous margin (one board width). No mitred corner should extend
+        // beyond the outline into a spike.
+        const double margin = 200;
+        foreach (var edge in edges)
+        {
+            foreach (var corner in edge.Board.Corners!)
+            {
+                Assert.InRange(corner.X, -margin, 4000 + margin);
+                Assert.InRange(corner.Y, -margin, 2000 + margin);
+            }
+        }
+    }
 }
