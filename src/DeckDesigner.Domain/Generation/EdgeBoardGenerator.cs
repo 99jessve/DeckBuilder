@@ -126,6 +126,17 @@ public sealed class EdgeBoardGenerator
 
             var corners = new[] { startOuter, endOuter, endInner, startInner };
 
+            // Clip the cover board to the deck outline. At a thin neck (e.g. where a
+            // triangle corner just overlaps a rectangle side, leaving a sub-board-width
+            // connecting segment) an unclipped mitred board overruns the outline into a
+            // spike. Intersecting the convex board quad with the (possibly concave)
+            // outline guarantees the border never pokes outside the shape.
+            var clipped = ClipToOutline(corners, points);
+            if (clipped.Count >= 3)
+            {
+                corners = clipped.ToArray();
+            }
+
             // Reference point strictly on the interior side of the inner line so field
             // board clipping keeps the interior (not the border) side regardless of shape.
             var inside = new Point2D(innerLines[i].Point.X + nx, innerLines[i].Point.Y + ny);
@@ -139,6 +150,53 @@ public sealed class EdgeBoardGenerator
         }
 
         return edges;
+    }
+
+    // Intersects a convex board quad with the deck outline by clipping the outline polygon
+    // against each quad edge's half-plane (Sutherland-Hodgman). Because the quad is convex,
+    // this correctly handles a concave outline and keeps only the part of the board that
+    // lies inside the shape.
+    private static List<Point2D> ClipToOutline(
+        IReadOnlyList<Point2D> quad,
+        IReadOnlyList<Point2D> outline)
+    {
+        var cx = 0.0;
+        var cy = 0.0;
+        foreach (var p in quad)
+        {
+            cx += p.X;
+            cy += p.Y;
+        }
+
+        var center = new Point2D(cx / quad.Count, cy / quad.Count);
+
+        var result = new List<Point2D>(outline);
+        for (var i = 0; i < quad.Count && result.Count >= 3; i++)
+        {
+            var a = quad[i];
+            var b = quad[(i + 1) % quad.Count];
+            result = GeometryHelpers.ClipPolygonToHalfPlane(result, GeometryHelpers.LineThrough(a, b), center);
+        }
+
+        return Dedupe(result);
+    }
+
+    // Removes consecutive duplicate vertices (within 1e-6) left behind by clipping so the
+    // rendered polygon stays clean.
+    private static List<Point2D> Dedupe(IReadOnlyList<Point2D> points)
+    {
+        var cleaned = new List<Point2D>(points.Count);
+        for (var i = 0; i < points.Count; i++)
+        {
+            var p = points[i];
+            var q = points[(i + 1) % points.Count];
+            if (Math.Abs(p.X - q.X) > 1e-6 || Math.Abs(p.Y - q.Y) > 1e-6)
+            {
+                cleaned.Add(p);
+            }
+        }
+
+        return cleaned;
     }
 
     private static Point2D Midpoint(Point2D p, Point2D q)
@@ -193,6 +251,25 @@ public sealed class EdgeBoardGenerator
         {
             // Flush inner cut: foot of the perpendicular from the vertex onto the inner line.
             inner = ClosestPointOnLine(innerEdge, corner);
+        }
+
+        // A mitre may only pull a corner *back* into this board, never push it *past* the
+        // vertex along the edge. Against a steep neighbor (e.g. a hypotenuse at a merge
+        // neck) the inner intersection overshoots beyond the edge endpoint, which slants
+        // the board side inward into a visible taper/wedge. Clamp any such overshoot to a
+        // flush cut so the board keeps a square end.
+        // Outward along-edge direction at this corner: +edgeDir at the end vertex,
+        // -edgeDir at the start vertex.
+        var edgeDir = outerEdge.Direction;
+        var sign = prev ? -1.0 : 1.0;
+        if (((inner.X - corner.X) * edgeDir.X + (inner.Y - corner.Y) * edgeDir.Y) * sign > 1e-6)
+        {
+            inner = ClosestPointOnLine(innerEdge, corner);
+        }
+
+        if (((outer.X - corner.X) * edgeDir.X + (outer.Y - corner.Y) * edgeDir.Y) * sign > 1e-6)
+        {
+            outer = corner;
         }
 
         return (outer, inner);

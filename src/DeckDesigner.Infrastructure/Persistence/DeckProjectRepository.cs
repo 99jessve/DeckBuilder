@@ -19,7 +19,7 @@ public sealed class DeckProjectRepository
         ArgumentNullException.ThrowIfNull(decks);
         var dto = new DeckProjectDto
         {
-            Version = 1,
+            Version = 2,
             Decks = decks.Select(DeckMapper.ToDto).ToArray(),
         };
 
@@ -31,6 +31,11 @@ public sealed class DeckProjectRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
         var dto = JsonSerializer.Deserialize<DeckProjectDto>(json, Options)
                   ?? throw new InvalidOperationException("Unable to deserialize deck project.");
+
+        if (dto.Version is < 1 or > 2)
+        {
+            throw new InvalidOperationException($"Unsupported project version {dto.Version}.");
+        }
 
         return dto.Decks.Select(DeckMapper.ToDomain).ToList();
     }

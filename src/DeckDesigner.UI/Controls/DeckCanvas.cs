@@ -24,8 +24,8 @@ public sealed class DeckCanvas : Control
     private readonly Camera _camera = new();
     private readonly BoardRenderer _boardRenderer = new();
     private readonly JoistRenderer _joistRenderer = new();
-    private readonly ButtJointRenderer _buttJointRenderer = new();
     private readonly SnapService _snapService = new();
+    private readonly DeckEditingService _editingService = new();
 
     private MainViewModel? _viewModel;
     private bool _fitted;
@@ -42,7 +42,11 @@ public sealed class DeckCanvas : Control
     // Moving a selected shape.
     private bool _isMoving;
     private Point2D _moveStartWorld;
-    private IReadOnlyList<Point2D> _moveBaseline = Array.Empty<Point2D>();
+    private Deck? _moveBaseline;
+    private int _resizeCorner = -1;
+    private string? _dividerLayoutKey;
+    private BreakerDefinition? _dragDivider;
+    private double _dividerDragOffset;
 
     // Panning the view.
     private bool _isPanning;
@@ -182,14 +186,38 @@ public sealed class DeckCanvas : Control
         if (_viewModel.CurrentTool == DrawTool.Select)
         {
             _triangleClicks.Clear();
+            var tolerance = 8 / Math.Max(_camera.Zoom, 1e-6);
+            var candidates = _viewModel.Decks.OrderByDescending(d => ReferenceEquals(d, _viewModel.SelectedDeck));
+            foreach (var deck in candidates)
+            {
+                var corner = _editingService.HitCorner(deck, world, tolerance);
+                if (corner < 0) continue;
+                _viewModel.Select(deck);
+                _resizeCorner = corner;
+                e.Pointer.Capture(this);
+                return;
+            }
+
             var hit = _viewModel.HitTest(world);
             _viewModel.Select(hit);
+            foreach (var composition in _viewModel.Compositions.Reverse())
+            {
+                var divider = _editingService.HitDivider(composition.Deck, world, tolerance);
+                if (divider is null) continue;
+                _dividerLayoutKey = composition.Key;
+                _dragDivider = divider;
+                _dividerDragOffset = (divider.Direction == BoardDirection.Vertical ? world.X : world.Y) - divider.Position;
+                e.Pointer.Capture(this);
+                return;
+            }
+
+            _viewModel.SelectSection(world);
 
             if (hit is not null)
             {
                 _isMoving = true;
                 _moveStartWorld = world;
-                _moveBaseline = hit.Shape.Points.ToArray();
+                _moveBaseline = hit;
                 e.Pointer.Capture(this);
             }
 
@@ -255,6 +283,20 @@ public sealed class DeckCanvas : Control
             return;
         }
 
+        if (_resizeCorner >= 0)
+        {
+            _viewModel.ResizeSelectedCorner(_resizeCorner, ToGridWorld(screen));
+            return;
+        }
+
+        if (_dragDivider is not null && _dividerLayoutKey is not null)
+        {
+            var world = ToWorld(screen);
+            var position = (_dragDivider.Direction == BoardDirection.Vertical ? world.X : world.Y) - _dividerDragOffset;
+            _viewModel.MoveDivider(_dividerLayoutKey, _dragDivider.Id, Math.Round(position / GridStepMm) * GridStepMm);
+            return;
+        }
+
         if (_isMoving)
         {
             MoveSelected(ToWorld(screen));
@@ -297,10 +339,12 @@ public sealed class DeckCanvas : Control
 
     private void MoveSelected(Point2D world)
     {
-        if (_viewModel is null || _moveBaseline.Count == 0)
+        if (_viewModel is null || _moveBaseline is null)
         {
             return;
         }
+
+        if (world.DistanceTo(_moveStartWorld) * _camera.Zoom < 3) return;
 
         var offset = new Vector2D(world.X - _moveStartWorld.X, world.Y - _moveStartWorld.Y);
 
@@ -309,24 +353,31 @@ public sealed class DeckCanvas : Control
             Math.Round(offset.X / GridStepMm) * GridStepMm,
             Math.Round(offset.Y / GridStepMm) * GridStepMm);
 
-        var moved = _moveBaseline.Select(p => p.Translate(offset)).ToArray();
-        var movedBounds = BoundingBox.FromPoints(moved);
+        var moved = _moveBaseline.Shape.Points.Select(p => p.Translate(offset)).ToArray();
 
-        // Snap against the other shapes' bounds. Threshold ~ 12 px in world units.
+        // Snap only parallel edges with at least 100 mm of shared contact.
         var others = _viewModel.Decks
             .Where(d => !ReferenceEquals(d, _viewModel.SelectedDeck))
-            .Select(d => d.Shape.GetBounds());
+            .Select(d => d.Shape);
         var threshold = 12.0 / Math.Max(_camera.Zoom, 1e-6);
-        var snap = _snapService.ComputeSnap(movedBounds, others, threshold);
+        var snap = _snapService.ComputeSnap(new PolygonShape(moved), others, threshold);
 
-        var finalPoints = moved.Select(p => p.Translate(snap)).ToArray();
-        _viewModel.ReplaceSelectedShape(new PolygonShape(finalPoints));
+        _viewModel.MoveSelected(_moveBaseline, offset + snap);
         InvalidateVisual();
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+
+        if (_resizeCorner >= 0 || _dragDivider is not null)
+        {
+            _resizeCorner = -1;
+            _dragDivider = null;
+            _dividerLayoutKey = null;
+            e.Pointer.Capture(null);
+            return;
+        }
 
         if (_isPanning)
         {
@@ -338,7 +389,7 @@ public sealed class DeckCanvas : Control
         if (_isMoving)
         {
             _isMoving = false;
-            _moveBaseline = Array.Empty<Point2D>();
+            _moveBaseline = null;
             e.Pointer.Capture(null);
             return;
         }
@@ -422,7 +473,7 @@ public sealed class DeckCanvas : Control
         }
 
         var c = new Point2D(corner.X + (perpX * projection), corner.Y + (perpY * projection));
-        _viewModel.AddShape(new TriangleShape(a, corner, c));
+        _viewModel.AddShape(new TriangleShape(a, corner, c), ShapeConstraint.RightTriangle);
     }
 
     /// <summary>
@@ -469,6 +520,19 @@ public sealed class DeckCanvas : Control
 
         InvalidateVisual();
         e.Handled = true;
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        _isMoving = false;
+        _isPanning = false;
+        _isDrawing = false;
+        _moveBaseline = null;
+        _resizeCorner = -1;
+        _dragDivider = null;
+        _dividerLayoutKey = null;
+        InvalidateVisual();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -521,7 +585,27 @@ public sealed class DeckCanvas : Control
         {
             _joistRenderer.Render(deck.Joists, _camera, ctx);
             _boardRenderer.Render(deck.Boards, _camera, ctx);
-            _buttJointRenderer.Render(deck.ButtJoints, _camera, ctx);
+            foreach (var breaker in deck.BreakerBoards)
+            {
+                if (breaker.Corners is { Count: >= 3 })
+                    DrawOutline(context, new PolygonShape(breaker.Corners), false, overlay: true);
+            }
+        }
+
+        if (_viewModel.CurrentTool == DrawTool.Select)
+        {
+            if (_viewModel.SelectedSection is { } section)
+                DrawOutline(context, section.Shape, true, overlay: true);
+            if (_viewModel.SelectedDeck is { } selected)
+            {
+                DrawOutline(context, selected.Shape, true, overlay: true);
+                var brush = new SolidColorBrush(Color.Parse("#4EC9B0"));
+                foreach (var corner in selected.Shape.Points)
+                {
+                    var p = _camera.WorldToScreen(corner);
+                    context.DrawRectangle(brush, new Pen(Brushes.Black, 1), new Rect(p.X - 4, p.Y - 4, 8, 8));
+                }
+            }
         }
 
         if (_isDrawing)
@@ -565,7 +649,7 @@ public sealed class DeckCanvas : Control
         }
     }
 
-    private void DrawOutline(DrawingContext context, IShape shape, bool selected)
+    private void DrawOutline(DrawingContext context, IShape shape, bool selected, bool overlay = false)
     {
         var points = shape.Points;
         if (points.Count < 2)
@@ -587,7 +671,7 @@ public sealed class DeckCanvas : Control
             g.EndFigure(true);
         }
 
-        var fill = new SolidColorBrush(Color.Parse("#2A2118"));
+        IBrush? fill = overlay ? null : new SolidColorBrush(Color.Parse("#2A2118"));
         var strokeColor = selected ? "#4EC9B0" : "#E0A868";
         var pen = new Pen(new SolidColorBrush(Color.Parse(strokeColor)), selected ? 3 : 2) { LineJoin = PenLineJoin.Round };
         context.DrawGeometry(fill, pen, geometry);

@@ -1,5 +1,7 @@
 namespace DeckDesigner.Infrastructure.Persistence;
 
+using DeckDesigner.Domain.Model;
+
 /// <summary>
 /// Serializable snapshot of a deck outline point.
 /// </summary>
@@ -38,7 +40,13 @@ public sealed record DeckMetadataDto
 /// </summary>
 public sealed record DeckDto
 {
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public ShapeConstraint Constraint { get; init; }
+    public bool AutomaticDividers { get; init; } = true;
+    public BreakerDefinition[] Dividers { get; init; } = Array.Empty<BreakerDefinition>();
+    public Dictionary<string, BoardDirection> SectionDirections { get; init; } = new();
     public PointDto[] ShapePoints { get; init; } = Array.Empty<PointDto>();
+    public PointDto[][] Holes { get; init; } = Array.Empty<PointDto[]>();
     public DeckSettingsDto Settings { get; init; } = new();
     public DeckMetadataDto Metadata { get; init; } = new();
 }
@@ -48,6 +56,6 @@ public sealed record DeckDto
 /// </summary>
 public sealed record DeckProjectDto
 {
-    public int Version { get; init; } = 1;
+    public int Version { get; init; } = 2;
     public DeckDto[] Decks { get; init; } = Array.Empty<DeckDto>();
 }

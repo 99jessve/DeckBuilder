@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\DeckDesigner.Domain\DeckDesigner.Domain.csproj" />
     <ProjectReference Include="..\..\src\DeckDesigner.Application\DeckDesigner.Application.csproj" />
     <ProjectReference Include="..\..\src\DeckDesigner.Infrastructure\DeckDesigner.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\DeckDesigner.UI\DeckDesigner.UI.csproj" />
   </ItemGroup>
 
 </Project>

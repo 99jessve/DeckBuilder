@@ -24,7 +24,7 @@
 				<Separator />
 				<Button Content="Delete" Click="OnDeleteClick" IsEnabled="{Binding HasSelection}" />
 				<Button Content="Fit View" Click="OnFitClick" />
-				<TextBlock Text="Left-drag: draw/move · Wheel: zoom · Right/Middle-drag: pan · Del: delete"
+				<TextBlock Text="Drag corners: resize · Drag breaker: adjust · Wheel: zoom · Del: delete"
 						   VerticalAlignment="Center" Opacity="0.7" />
 			</StackPanel>
 		</Border>
@@ -55,6 +55,13 @@
 						<NumericUpDown Value="{Binding MaxBoardLength}" Minimum="500" Maximum="6000" Increment="100" />
 
 						<CheckBox Content="Boards run horizontally" IsChecked="{Binding BoardsHorizontal}" Margin="0,4,0,0" />
+					</StackPanel>
+
+					<StackPanel Spacing="6">
+						<TextBlock Text="Selected section" FontWeight="Bold" />
+						<TextBlock Text="Use Select, then click either side of a breaker board." TextWrapping="Wrap" Opacity="0.8" />
+						<CheckBox Content="Section runs horizontally" IsChecked="{Binding SectionBoardsHorizontal, Mode=TwoWay}" IsEnabled="{Binding HasSelectedSection}" />
+						<Button Content="Reset to automatic layout" Command="{Binding ResetLayoutCommand}" IsEnabled="{Binding HasSelection}" />
 					</StackPanel>
 
 					<Separator />

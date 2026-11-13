@@ -1,5 +1,7 @@
 namespace DeckDesigner.Domain.Geometry;
 
+using System.Linq;
+
 /// <summary>
 /// Small analytic-geometry helpers used by geometry generation: infinite-line
 /// intersection, signed side-of-line tests and half-plane segment clipping.
@@ -147,5 +149,99 @@ public static class GeometryHelpers
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Returns true if the polygon is simple (no non-adjacent edges intersect). Used to
+    /// detect degenerate self-intersecting (bowtie) results from clipping against a
+    /// near-degenerate region.
+    /// </summary>
+    public static bool IsSimplePolygon(IReadOnlyList<Point2D> polygon)
+    {
+        var n = polygon.Count;
+        if (n < 4)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < n; i++)
+        {
+            var a1 = polygon[i];
+            var a2 = polygon[(i + 1) % n];
+            for (var j = i + 1; j < n; j++)
+            {
+                // Skip adjacent edges (they share a vertex).
+                if (j == i || (j + 1) % n == i || (i + 1) % n == j)
+                {
+                    continue;
+                }
+
+                var b1 = polygon[j];
+                var b2 = polygon[(j + 1) % n];
+                if (SegmentsProperlyIntersect(a1, a2, b1, b2))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Computes the convex hull (counter-clockwise) of a point set using the monotone
+    /// chain algorithm. Used to repair a self-intersecting board footprint into a clean
+    /// convex polygon.
+    /// </summary>
+    public static List<Point2D> ConvexHull(IReadOnlyList<Point2D> points)
+    {
+        var pts = points.Distinct().OrderBy(p => p.X).ThenBy(p => p.Y).ToList();
+        if (pts.Count < 3)
+        {
+            return new List<Point2D>(pts);
+        }
+
+        var hull = new List<Point2D>();
+
+        // Lower hull.
+        foreach (var p in pts)
+        {
+            while (hull.Count >= 2 && Cross(hull[^2], hull[^1], p) <= 0)
+            {
+                hull.RemoveAt(hull.Count - 1);
+            }
+
+            hull.Add(p);
+        }
+
+        // Upper hull.
+        var lower = hull.Count + 1;
+        for (var i = pts.Count - 2; i >= 0; i--)
+        {
+            var p = pts[i];
+            while (hull.Count >= lower && Cross(hull[^2], hull[^1], p) <= 0)
+            {
+                hull.RemoveAt(hull.Count - 1);
+            }
+
+            hull.Add(p);
+        }
+
+        hull.RemoveAt(hull.Count - 1);
+        return hull;
+    }
+
+    private static double Cross(Point2D o, Point2D a, Point2D b)
+        => ((a.X - o.X) * (b.Y - o.Y)) - ((a.Y - o.Y) * (b.X - o.X));
+
+    private static bool SegmentsProperlyIntersect(Point2D p1, Point2D p2, Point2D p3, Point2D p4)
+    {
+        var d1 = Cross(p3, p4, p1);
+        var d2 = Cross(p3, p4, p2);
+        var d3 = Cross(p1, p2, p3);
+        var d4 = Cross(p1, p2, p4);
+
+        return ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9))
+            && ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9));
     }
 }

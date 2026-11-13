@@ -70,4 +70,44 @@ public class DeckCompositionServiceTests
         Assert.Single(decks);
         Assert.NotEmpty(decks[0].Boards);
     }
+
+    [Fact]
+    public void Compose_TriangleCornerOnRectangleSide_ProducesSimpleBoardPolygons()
+    {
+        var service = new DeckCompositionService();
+
+        // A triangle whose corner overlaps the rectangle's right side, producing a merged
+        // outline with a thin neck. Clipping field boards against the near-degenerate
+        // interior there used to yield self-intersecting / pinched (duplicate-vertex)
+        // polygons that rendered as dark holes. Every board footprint must be a clean
+        // simple polygon with no coincident vertices.
+        var rect = new RectangleShape(new Point2D(0, 0), 4000, 3000);
+        var tri = new TriangleShape(
+            new Point2D(3950, 1400),
+            new Point2D(7000, 1400),
+            new Point2D(7000, 4400));
+
+        var decks = service.Compose(new IShape[] { rect, tri }, new DeckSettings());
+
+        Assert.Single(decks);
+        foreach (var board in decks[0].Boards)
+        {
+            if (board.Corners is not { Count: >= 3 } corners)
+            {
+                continue;
+            }
+
+            Assert.True(GeometryHelpers.IsSimplePolygon(corners), "Board polygon is self-intersecting.");
+
+            for (var i = 0; i < corners.Count; i++)
+            {
+                for (var j = i + 1; j < corners.Count; j++)
+                {
+                    var dup = Math.Abs(corners[i].X - corners[j].X) < 1e-6
+                        && Math.Abs(corners[i].Y - corners[j].Y) < 1e-6;
+                    Assert.False(dup, "Board polygon has a duplicate (pinched) vertex.");
+                }
+            }
+        }
+    }
 }

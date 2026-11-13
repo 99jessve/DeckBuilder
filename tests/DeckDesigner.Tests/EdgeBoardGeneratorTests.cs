@@ -140,4 +140,82 @@ public class EdgeBoardGeneratorTests
             }
         }
     }
+
+    [Fact]
+    public void ThinNeckMerge_EdgeBoardsStayWithinOutline()
+    {
+        var gen = new EdgeBoardGenerator();
+        var settings = new DeckSettings();
+
+        // Merged outline like a triangle corner overlapping a rectangle side: the right
+        // edge is split by a sub-board-width (49mm) connecting neck. A cover board placed
+        // on that thin neck used to overrun the outline into a spike; it must now be
+        // clipped to the shape.
+        var shape = new PolygonShape(new List<Point2D>
+        {
+            new(0, 0),
+            new(0, 3000),
+            new(4000, 3000),
+            new(4000, 1449),
+            new(7000, 4400),
+            new(7000, 1400),
+            new(4000, 1400),
+            new(4000, 0),
+        });
+
+        var edges = gen.GenerateEdges(shape, settings);
+
+        // Every edge board corner must lie within the outline's bounding box (no spike).
+        const double tol = 1.0;
+        foreach (var edge in edges)
+        {
+            foreach (var corner in edge.Board.Corners!)
+            {
+                Assert.InRange(corner.X, -tol, 7000 + tol);
+                Assert.InRange(corner.Y, -tol, 4400 + tol);
+            }
+        }
+    }
+
+    [Fact]
+    public void ThinNeckMerge_VerticalCoverBoardsKeepSquareEnds()
+    {
+        var gen = new EdgeBoardGenerator();
+        var settings = new DeckSettings { BoardWidth = 145 };
+
+        var shape = new PolygonShape(new List<Point2D>
+        {
+            new(0, 0),
+            new(0, 3000),
+            new(4000, 3000),
+            new(4000, 1449),
+            new(7000, 4400),
+            new(7000, 1400),
+            new(4000, 1400),
+            new(4000, 0),
+        });
+
+        var edges = gen.GenerateEdges(shape, settings);
+
+        // The two vertical cover boards flanking the neck run along x=4000. A mitre against
+        // the steep hypotenuse used to overshoot past the edge endpoint, slanting the inner
+        // side into a taper. Their inner edge must stay a straight vertical line at x=3855.
+        foreach (var edge in edges)
+        {
+            var vertical = Math.Abs(edge.EdgeStart.X - 4000) < 1 && Math.Abs(edge.EdgeEnd.X - 4000) < 1;
+            if (!vertical)
+            {
+                continue;
+            }
+
+            // Inner corners are those at x=3855 (one board width in from the outline edge).
+            var innerXs = edge.Board.Corners!
+                .Where(p => p.X < 4000 - 1)
+                .Select(p => p.X)
+                .ToList();
+
+            Assert.NotEmpty(innerXs);
+            Assert.All(innerXs, x => Assert.Equal(3855, x, 1));
+        }
+    }
 }

@@ -16,9 +16,13 @@ public sealed class MainViewModel : ViewModelBase
 {
     private static readonly CultureInfo Ci = CultureInfo.InvariantCulture;
 
-    private readonly GeometryService _geometryService = new();
+    private readonly DeckEditingService _editingService = new();
     private readonly MaterialReportService _reportService = new(new CutOptimizer());
     private readonly DeckCompositionService _compositionService = new();
+    private readonly List<ComposedDeck> _compositions = new();
+    private Dictionary<string, Deck> _designs = new();
+    private string? _selectedLayoutKey;
+    private string? _selectedSectionId;
 
     private readonly List<Deck> _decks = new();
 
@@ -44,6 +48,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public MainViewModel()
     {
+        ResetLayoutCommand = new RelayCommand(ResetSelectedLayout);
         Recompute();
     }
 
@@ -57,6 +62,26 @@ public sealed class MainViewModel : ViewModelBase
     /// generated boards and joists should use these so snapped shapes look uniform.
     /// </summary>
     public IReadOnlyList<Deck> MergedDecks => _mergedDecks;
+
+    public IReadOnlyList<ComposedDeck> Compositions => _compositions;
+
+    public DeckSection? SelectedSection => _compositions.FirstOrDefault(c => c.Key == _selectedLayoutKey)?
+        .Deck.Sections.FirstOrDefault(s => s.Id == _selectedSectionId);
+
+    public bool HasSelectedSection => SelectedSection is not null;
+
+    public bool SectionBoardsHorizontal
+    {
+        get => SelectedSection?.Direction == BoardDirection.Horizontal;
+        set
+        {
+            if (_selectedLayoutKey is null || _selectedSectionId is null) return;
+            EditLayout(_selectedLayoutKey, d => _editingService.SetSectionDirection(d, _selectedSectionId,
+                value ? BoardDirection.Horizontal : BoardDirection.Vertical));
+        }
+    }
+
+    public RelayCommand ResetLayoutCommand { get; }
 
     public Deck? SelectedDeck
     {
@@ -84,7 +109,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsTriangleTool));
                 StatusText = value switch
                 {
-                    DrawTool.Select => "Select tool: click a shape to select, drag to move, Delete to remove.",
+                    DrawTool.Select => "Select: drag corners to resize, drag a breaker to move it, click a section to change its direction.",
                     DrawTool.Rectangle => "Rectangle tool: click and drag to draw a deck.",
                     DrawTool.Triangle => "Triangle tool: click three points to define a right-angled triangle.",
                     _ => StatusText,
@@ -161,14 +186,18 @@ public sealed class MainViewModel : ViewModelBase
     public string ShapeCountText => _decks.Count.ToString(Ci);
 
     /// <summary>Adds a new deck for the given shape without disturbing existing shapes.</summary>
-    public Deck AddShape(IShape shape)
+    public Deck? AddShape(IShape shape, ShapeConstraint? constraint = null)
     {
         ArgumentNullException.ThrowIfNull(shape);
         var deck = new Deck(shape, _settings, new DeckMetadata { Name = $"Deck {++_counter}" });
-        _geometryService.Rebuild(deck);
-        _decks.Add(deck);
+        if (constraint is not null) deck.Constraint = constraint.Value;
+        if (!TryChange(() =>
+        {
+            deck.RebuildGeometry();
+            CommitSources(_decks.Append(deck).ToList(), _settings);
+        })) return null;
         SelectedDeck = deck;
-        Recompute();
+        DeckChanged?.Invoke();
         var b = shape.GetBounds();
         var kind = shape.GetType().Name.Replace("Shape", string.Empty);
         StatusText = $"Added {kind} {b.Width.ToString("F0", Ci)} x {b.Height.ToString("F0", Ci)} mm";
@@ -180,7 +209,8 @@ public sealed class MainViewModel : ViewModelBase
     {
         for (var i = _decks.Count - 1; i >= 0; i--)
         {
-            if (PolygonMath.Contains(_decks[i].Shape.Points, world))
+            if (PolygonGeometry.ToPolygon(_decks[i].Shape).Covers(
+                PolygonGeometry.Factory.CreatePoint(new NetTopologySuite.Geometries.Coordinate(world.X, world.Y))))
             {
                 return _decks[i];
             }
@@ -192,20 +222,78 @@ public sealed class MainViewModel : ViewModelBase
     public void Select(Deck? deck)
     {
         SelectedDeck = deck;
+        _selectedLayoutKey = null;
+        _selectedSectionId = null;
+        NotifySection();
         DeckChanged?.Invoke();
     }
 
-    /// <summary>Replaces the selected deck's shape (used while moving) and rebuilds it.</summary>
-    public void ReplaceSelectedShape(IShape shape)
+    public void SelectSection(Point2D point)
     {
-        if (_selectedDeck is null)
+        _selectedLayoutKey = null;
+        _selectedSectionId = null;
+        foreach (var composition in _compositions.AsEnumerable().Reverse())
         {
-            return;
+            var section = _editingService.HitSection(composition.Deck, point);
+            if (section is null) continue;
+            _selectedLayoutKey = composition.Key;
+            _selectedSectionId = section.Id;
+            break;
         }
+        NotifySection();
+        DeckChanged?.Invoke();
+    }
 
-        _selectedDeck.Shape = shape;
-        _geometryService.Rebuild(_selectedDeck);
-        Recompute();
+    public bool ResizeSelectedCorner(int corner, Point2D point) => EditSource(
+        d => _editingService.ResizeCorner(d, corner, point));
+
+    public bool MoveSelected(Deck baseline, Vector2D offset) => EditSource(
+        _ => _editingService.Translate(baseline, offset));
+
+    public bool MoveDivider(string layoutKey, string dividerId, double position) =>
+        EditLayout(layoutKey, d => _editingService.MoveDivider(d, dividerId, position));
+
+    private bool EditSource(Func<Deck, Deck> edit)
+    {
+        if (_selectedDeck is null) return false;
+        return TryChange(() =>
+        {
+            var candidate = edit(_selectedDeck);
+            CommitSources(_decks.Select(d => d.Id == candidate.Id ? candidate : d).ToList(), _settings);
+            StatusText = "Design updated.";
+        });
+    }
+
+    private bool EditLayout(string key, Func<Deck, Deck> edit)
+    {
+        var composition = _compositions.FirstOrDefault(c => c.Key == key);
+        if (composition is null) return false;
+        return TryChange(() =>
+        {
+            var candidate = edit(composition.Deck);
+            var designs = new Dictionary<string, Deck>(_designs) { [key] = candidate };
+            var sources = composition.SourceIds.Count == 1
+                ? _decks.Select(d => d.Id == composition.SourceIds[0] ? candidate : d).ToList()
+                : _decks.ToList();
+            CommitSources(sources, _settings, designs);
+            StatusText = "Layout updated. Drag its breaker boards or select another section.";
+        });
+    }
+
+    private void ResetSelectedLayout()
+    {
+        var composition = _compositions.FirstOrDefault(c => c.Key == _selectedLayoutKey)
+            ?? _compositions.FirstOrDefault(c => _selectedDeck is not null && c.SourceIds.Contains(_selectedDeck.Id));
+        if (composition is null) return;
+        EditLayout(composition.Key, d =>
+        {
+            var candidate = DeckEditingService.Copy(d);
+            candidate.AutomaticDividers = true;
+            candidate.Dividers.Clear();
+            candidate.SectionDirections.Clear();
+            candidate.RebuildGeometry();
+            return candidate;
+        });
     }
 
     public void DeleteSelected()
@@ -215,37 +303,42 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        _decks.Remove(_selectedDeck);
-        SelectedDeck = null;
-        Recompute();
-        StatusText = "Shape deleted.";
+        if (TryChange(() => CommitSources(_decks.Where(d => d.Id != _selectedDeck.Id).ToList(), _settings)))
+            StatusText = "Shape deleted.";
     }
 
     private void UpdateSettings(DeckSettings settings)
     {
-        _settings = settings;
-        foreach (var deck in _decks)
+        TryChange(() => CommitSources(_decks.Select(d =>
         {
-            deck.Settings = settings;
-            _geometryService.Rebuild(deck);
-        }
+            var candidate = DeckEditingService.Copy(d);
+            candidate.Settings = settings;
+            return candidate;
+        }).ToList(), settings));
 
         OnPropertyChanged(nameof(BoardWidth));
         OnPropertyChanged(nameof(BoardGap));
         OnPropertyChanged(nameof(JoistSpacing));
         OnPropertyChanged(nameof(MaxBoardLength));
         OnPropertyChanged(nameof(BoardsHorizontal));
-        Recompute();
     }
 
-    private void Recompute()
+    private void Recompute() => CommitSources(_decks.ToList(), _settings);
+
+    private void CommitSources(List<Deck> sources, DeckSettings settings, Dictionary<string, Deck>? designs = null)
     {
-        // Merge touching/overlapping shapes into continuous decks so framing and
-        // decking run uniformly across snapped shapes, then report on those.
+        var composed = _compositionService.ComposeDesigns(sources, settings, designs ?? _designs);
+        var reports = composed.Select(c => _reportService.Generate(c.Deck)).ToArray();
+        var selectedId = _selectedDeck?.Id;
+        _decks.Clear();
+        _decks.AddRange(sources);
+        _settings = settings;
+        SelectedDeck = _decks.FirstOrDefault(d => d.Id == selectedId);
+        _compositions.Clear();
+        _compositions.AddRange(composed);
+        _designs = composed.ToDictionary(c => c.Key, c => c.Deck);
         _mergedDecks.Clear();
-        _mergedDecks.AddRange(_compositionService.Compose(
-            _decks.Select(d => d.Shape).ToList(),
-            _settings));
+        _mergedDecks.AddRange(composed.Select(c => c.Deck));
 
         _areaM2 = 0;
         _boardCount = 0;
@@ -255,9 +348,8 @@ public sealed class MainViewModel : ViewModelBase
         _wasteM = 0;
         _screwCount = 0;
 
-        foreach (var deck in _mergedDecks)
+        foreach (var report in reports)
         {
-            var report = _reportService.Generate(deck);
             _areaM2 += report.AreaSquareMeters;
             _boardCount += report.BoardCount;
             _boardRunningM += report.BoardRunningMeters;
@@ -276,7 +368,30 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ScrewText));
         OnPropertyChanged(nameof(ShapeCountText));
 
+        NotifySection();
         DeckChanged?.Invoke();
+    }
+
+    private bool TryChange(Action change)
+    {
+        try
+        {
+            change();
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NetTopologySuite.Geometries.TopologyException)
+        {
+            StatusText = ex.Message;
+            NotifySection();
+            return false;
+        }
+    }
+
+    private void NotifySection()
+    {
+        OnPropertyChanged(nameof(SelectedSection));
+        OnPropertyChanged(nameof(HasSelectedSection));
+        OnPropertyChanged(nameof(SectionBoardsHorizontal));
     }
 
     private static double ClampPositive(double value, double min) => value < min ? min : value;

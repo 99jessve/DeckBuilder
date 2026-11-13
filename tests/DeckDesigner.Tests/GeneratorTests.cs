@@ -39,15 +39,21 @@ public class GeneratorTests
     }
 
     [Fact]
-    public void LongSpan_FlagsNeedsJoint()
+    public void LongSpan_ProducesStockLengthPiecesAndCenteredBreaker()
     {
         var shape = new RectangleShape(Point2D.Origin, 6000, 1000);
         var settings = new DeckSettings { MaxBoardLength = 5400 };
         var deck = new Deck(shape, settings);
         deck.RebuildGeometry();
 
-        var fieldBoards = deck.Boards.Except(deck.EdgeBoards).ToList();
-        Assert.All(fieldBoards, b => Assert.True(b.NeedsJoint));
+        Assert.Equal(3000, Assert.Single(deck.EffectiveDividers).Position, 6);
+        Assert.Equal(2, deck.Sections.Count);
+        Assert.NotEmpty(deck.BreakerBoards);
+        Assert.All(deck.Boards, b =>
+        {
+            Assert.False(b.NeedsJoint);
+            Assert.InRange(b.Length, 0.001, settings.MaxBoardLength + 1e-6);
+        });
     }
 
     [Fact]
@@ -55,6 +61,7 @@ public class GeneratorTests
     {
         var deck = BuildDeck();
         Assert.NotEmpty(deck.Joists);
-        Assert.All(deck.Joists, j => Assert.Equal(3000, j.Length, 3));
+        Assert.Contains(deck.Joists, j => Math.Abs(j.Length - 2710) < 1e-6);
+        Assert.All(deck.Joists, j => Assert.True(j.Length > 0));
     }
 }

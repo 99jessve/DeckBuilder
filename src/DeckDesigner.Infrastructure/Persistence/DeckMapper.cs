@@ -15,7 +15,15 @@ public static class DeckMapper
 
         return new DeckDto
         {
+            Id = deck.Id,
+            Constraint = deck.Constraint,
+            AutomaticDividers = deck.AutomaticDividers,
+            Dividers = deck.Dividers.ToArray(),
+            SectionDirections = new(deck.SectionDirections),
             ShapePoints = deck.Shape.Points.Select(p => new PointDto(p.X, p.Y)).ToArray(),
+            Holes = deck.Shape is PolygonShape polygon
+                ? polygon.Holes.Select(h => h.Select(p => new PointDto(p.X, p.Y)).ToArray()).ToArray()
+                : Array.Empty<PointDto[]>(),
             Settings = ToDto(deck.Settings),
             Metadata = ToDto(deck.Metadata),
         };
@@ -26,8 +34,15 @@ public static class DeckMapper
         ArgumentNullException.ThrowIfNull(dto);
 
         var points = dto.ShapePoints.Select(p => new Point2D(p.X, p.Y));
-        var shape = new PolygonShape(points);
-        var deck = new Deck(shape, ToDomain(dto.Settings), ToDomain(dto.Metadata));
+        var shape = new PolygonShape(points, dto.Holes.Select(h => (IReadOnlyList<Point2D>)h.Select(p => new Point2D(p.X, p.Y)).ToArray()));
+        var deck = new Deck(shape, ToDomain(dto.Settings), ToDomain(dto.Metadata))
+        {
+            Id = dto.Id,
+            Constraint = dto.Constraint,
+            AutomaticDividers = dto.AutomaticDividers,
+            Dividers = dto.Dividers.ToList(),
+            SectionDirections = new(dto.SectionDirections),
+        };
         deck.RebuildGeometry();
         return deck;
     }

@@ -19,11 +19,11 @@ public abstract class ShapeBase : IShape
 
     protected List<Point2D> Vertices { get; }
 
-    public double Area => PolygonMath.Area(Vertices);
+    public virtual double Area => PolygonMath.Area(Vertices);
 
     public IReadOnlyList<Point2D> Points => Vertices;
 
-    public void Move(Vector2D offset)
+    public virtual void Move(Vector2D offset)
     {
         for (var i = 0; i < Vertices.Count; i++)
         {
@@ -31,7 +31,7 @@ public abstract class ShapeBase : IShape
         }
     }
 
-    public void Rotate(double angle)
+    public virtual void Rotate(double angle)
     {
         var center = PolygonMath.Centroid(Vertices);
         for (var i = 0; i < Vertices.Count; i++)
